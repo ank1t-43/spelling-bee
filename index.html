@@ -7,19 +7,23 @@
   <style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #eef2f5; text-align: center; padding: 20px; }
     .card { background: white; max-width: 500px; margin: 20px auto; padding: 30px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
-    h1 { color: #2c3e50; margin-bottom: 20px; }
+    h1 { color: #2c3e50; margin-bottom: 10px; }
+    .mode-toggle { margin-bottom: 20px; }
+    .mode-btn { background-color: #e2e8f0; border: none; padding: 10px 18px; font-weight: bold; cursor: pointer; border-radius: 8px; font-size: 15px; }
+    .mode-btn.active { background-color: #3182ce; color: white; }
     select, input { font-size: 18px; padding: 12px; margin: 10px 0; border-radius: 8px; border: 1px solid #ccc; width: 80%; box-sizing: border-box; }
     button { font-size: 18px; padding: 12px 24px; margin: 10px 5px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; }
     .btn-audio { background-color: #3498db; color: white; }
-    .btn-audio:hover { background-color: #2980b9; }
     .btn-submit { background-color: #2ecc71; color: white; width: 80%; }
-    .btn-submit:hover { background-color: #27ae60; }
+    .btn-nav { background-color: #4a5568; color: white; }
+    .word-display { font-size: 32px; font-weight: bold; color: #2b6cb0; margin: 15px 0; min-height: 45px; letter-spacing: 2px; }
     .pos { color: #8e44ad; font-weight: bold; font-size: 16px; text-transform: uppercase; margin-top: 10px; }
-    .hint { color: #555; font-style: italic; margin: 10px 0 20px 0; min-height: 45px; line-height: 1.4; }
+    .hint { color: #2d3748; font-size: 18px; font-style: italic; margin: 10px 0 20px 0; min-height: 50px; line-height: 1.4; }
     .feedback { font-weight: bold; font-size: 20px; margin-top: 15px; }
     .correct { color: #27ae60; }
     .wrong { color: #c0392b; }
     .counter { color: #7f8c8d; font-size: 14px; margin-top: 15px; }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
@@ -27,37 +31,59 @@
   <div class="card">
     <h1>🐝 NNDYM Spelling Bee</h1>
     
+    <!-- Mode Switcher -->
+    <div class="mode-toggle">
+      <button id="modeStudyBtn" class="mode-btn active" onclick="setMode('study')">📖 Study Flashcards</button>
+      <button id="modeTestBtn" class="mode-btn" onclick="setMode('test')">✏️ Spelling Quiz</button>
+    </div>
+
     <label for="weekSelect" style="font-weight: bold; color: #34495e;">Select Week:</label><br>
     <select id="weekSelect" onchange="filterWeek()"></select>
 
+    <!-- Word Display for Study Mode -->
+    <div id="studyWordBox">
+      <div class="word-display" id="displayedWord">---</div>
+      <button class="mode-btn" style="font-size: 14px; padding: 6px 12px;" onclick="toggleWordVisibility()">👁️ Hide / Reveal Word</button>
+    </div>
+
     <div style="margin: 15px 0;">
-      <button class="btn-audio" onclick="speakWord()">🔊 Listen to Word</button>
+      <button class="btn-audio" onclick="speakWord()">🔊 Pronounce Word</button>
     </div>
 
     <div class="pos" id="posText"></div>
     <div class="hint" id="hintText">Loading words...</div>
 
-    <input type="text" id="userInput" placeholder="Type word here..." autocomplete="off" onkeypress="handleKeyPress(event)">
-    <br>
-    <button class="btn-submit" onclick="checkSpelling()">Submit Answer</button>
+    <!-- Quiz Input Box -->
+    <div id="quizBox" class="hidden">
+      <input type="text" id="userInput" placeholder="Type word here..." autocomplete="off" onkeypress="handleKeyPress(event)">
+      <br>
+      <button class="btn-submit" onclick="checkSpelling()">Submit Answer</button>
+      <div class="feedback" id="feedback"></div>
+    </div>
 
-    <div class="feedback" id="feedback"></div>
+    <!-- Study Navigation Buttons -->
+    <div id="studyNavBox" style="margin-top: 15px;">
+      <button class="btn-nav" onclick="prevWord()">⬅️ Prev</button>
+      <button class="btn-nav" onclick="nextWord()">Next ➡️</button>
+    </div>
+
     <div class="counter" id="counter"></div>
   </div>
 
   <script>
-    // ⚠️ PASTE YOUR PUBLISHED GOOGLE SHEET CSV LINK BELOW INSIDE QUOTES:
+    // PASTE YOUR PUBLISHED GOOGLE SHEET CSV LINK HERE:
     const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSRZ0oi5EBhQluPga2K658LaYw5ifDb8Qdnmkjz9I_2LqnUx-wF6rtWE2rrORblpi6tMlSNWEXT1QSR/pub?output=csv";
 
     let allWords = [];
     let currentPool = [];
     let currentIndex = 0;
+    let currentMode = 'study'; // 'study' or 'test'
+    let wordVisible = true;
 
     fetch(SHEET_CSV_URL)
       .then(res => res.text())
       .then(csvText => {
         const rows = parseCSV(csvText);
-        // Skip header row (i=1)
         for (let i = 1; i < rows.length; i++) {
           if (rows[i].length >= 2 && rows[i][1]) {
             allWords.push({
@@ -71,10 +97,9 @@
         populateWeeks();
       })
       .catch(err => {
-        document.getElementById('hintText').innerText = "Failed to load sheet data. Please check CSV URL.";
+        document.getElementById('hintText').innerText = "Failed to load sheet data. Check CSV URL.";
       });
 
-    // Helper to handle commas inside quoted definitions
     function parseCSV(text) {
       let lines = text.split('\n');
       return lines.map(line => {
@@ -109,22 +134,70 @@
       loadWord();
     }
 
+    function setMode(mode) {
+      currentMode = mode;
+      document.getElementById('modeStudyBtn').className = mode === 'study' ? 'mode-btn active' : 'mode-btn';
+      document.getElementById('modeTestBtn').className = mode === 'test' ? 'mode-btn active' : 'mode-btn';
+
+      if (mode === 'study') {
+        document.getElementById('studyWordBox').classList.remove('hidden');
+        document.getElementById('studyNavBox').classList.remove('hidden');
+        document.getElementById('quizBox').classList.add('hidden');
+      } else {
+        document.getElementById('studyWordBox').classList.add('hidden');
+        document.getElementById('studyNavBox').classList.add('hidden');
+        document.getElementById('quizBox').classList.remove('hidden');
+      }
+      wordVisible = true;
+      loadWord();
+    }
+
     function loadWord() {
       document.getElementById('feedback').innerText = "";
-      document.getElementById('userInput').value = "";
+      if (document.getElementById('userInput')) document.getElementById('userInput').value = "";
+
       if (currentPool.length > 0) {
-        document.getElementById('posText').innerText = currentPool[currentIndex].pos ? "(" + currentPool[currentIndex].pos + ")" : "";
-        document.getElementById('hintText').innerText = currentPool[currentIndex].hint ? currentPool[currentIndex].hint : "No hint provided.";
+        const item = currentPool[currentIndex];
+        document.getElementById('posText').innerText = item.pos ? "(" + item.pos + ")" : "";
+        document.getElementById('hintText').innerText = item.hint ? item.hint : "No definition provided.";
         document.getElementById('counter').innerText = "Word " + (currentIndex + 1) + " of " + currentPool.length;
+        
+        const wordEl = document.getElementById('displayedWord');
+        wordEl.innerText = wordVisible ? item.word : "🙈 • • • • •";
+
         speakWord();
+      }
+    }
+
+    function toggleWordVisibility() {
+      wordVisible = !wordVisible;
+      const wordEl = document.getElementById('displayedWord');
+      if (currentPool.length > 0) {
+        wordEl.innerText = wordVisible ? currentPool[currentIndex].word : "🙈 • • • • •";
+      }
+    }
+
+    function prevWord() {
+      if (currentPool.length > 0) {
+        currentIndex = (currentIndex - 1 + currentPool.length) % currentPool.length;
+        wordVisible = true;
+        loadWord();
+      }
+    }
+
+    function nextWord() {
+      if (currentPool.length > 0) {
+        currentIndex = (currentIndex + 1) % currentPool.length;
+        wordVisible = true;
+        loadWord();
       }
     }
 
     function speakWord() {
       if (currentPool.length > 0) {
-        window.speechSynthesis.cancel(); // Reset audio queue
+        window.speechSynthesis.cancel();
         const msg = new SpeechSynthesisUtterance(currentPool[currentIndex].word);
-        msg.rate = 0.8; // Slower pace for young learners
+        msg.rate = 0.8;
         window.speechSynthesis.speak(msg);
       }
     }
@@ -138,8 +211,7 @@
         feedback.innerText = "🎉 Correct! Great job!";
         feedback.className = "feedback correct";
         setTimeout(() => {
-          currentIndex = (currentIndex + 1) % currentPool.length;
-          loadWord();
+          nextWord();
         }, 1200);
       } else {
         feedback.innerText = "❌ Try again!";
