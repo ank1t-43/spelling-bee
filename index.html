@@ -14,6 +14,7 @@
     select, input { font-size: 18px; padding: 12px; margin: 10px 0; border-radius: 8px; border: 1px solid #ccc; width: 80%; box-sizing: border-box; }
     button { font-size: 18px; padding: 12px 24px; margin: 10px 5px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; }
     .btn-audio { background-color: #3498db; color: white; }
+    .btn-audio:hover { background-color: #2980b9; }
     .btn-submit { background-color: #2ecc71; color: white; width: 80%; }
     .btn-nav { background-color: #4a5568; color: white; }
     .word-display { font-size: 32px; font-weight: bold; color: #2b6cb0; margin: 15px 0; min-height: 45px; letter-spacing: 2px; }
@@ -28,7 +29,7 @@
 </head>
 <body>
 
-  <div class="card">
+  <div class="card" onclick="unlockAudio()">
     <h1>🐝 NNDYM Spelling Bee</h1>
     
     <!-- Mode Switcher -->
@@ -71,14 +72,22 @@
   </div>
 
   <script>
-    // PASTE YOUR PUBLISHED GOOGLE SHEET CSV LINK HERE:
+    // Your Published Google Sheet CSV Link:
     const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSRZ0oi5EBhQluPga2K658LaYw5ifDb8Qdnmkjz9I_2LqnUx-wF6rtWE2rrORblpi6tMlSNWEXT1QSR/pub?output=csv";
 
     let allWords = [];
     let currentPool = [];
     let currentIndex = 0;
-    let currentMode = 'study'; // 'study' or 'test'
+    let currentMode = 'study';
     let wordVisible = true;
+    let audioUnlocked = false;
+
+    // Load voices early for Chrome / Safari
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+    }
 
     fetch(SHEET_CSV_URL)
       .then(res => res.text())
@@ -164,8 +173,6 @@
         
         const wordEl = document.getElementById('displayedWord');
         wordEl.innerText = wordVisible ? item.word : "🙈 • • • • •";
-
-        speakWord();
       }
     }
 
@@ -193,12 +200,33 @@
       }
     }
 
+    function unlockAudio() {
+      if (!audioUnlocked && 'speechSynthesis' in window) {
+        const empty = new SpeechSynthesisUtterance('');
+        window.speechSynthesis.speak(empty);
+        audioUnlocked = true;
+      }
+    }
+
     function speakWord() {
-      if (currentPool.length > 0) {
+      unlockAudio();
+      if (currentPool.length > 0 && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
-        const msg = new SpeechSynthesisUtterance(currentPool[currentIndex].word);
+        
+        const wordToSpeak = currentPool[currentIndex].word;
+        const msg = new SpeechSynthesisUtterance(wordToSpeak);
+        
+        msg.lang = 'en-US';
         msg.rate = 0.8;
+        msg.pitch = 1.0;
+
+        const voices = window.speechSynthesis.getVoices();
+        const englishVoice = voices.find(v => v.lang.startsWith('en'));
+        if (englishVoice) msg.voice = englishVoice;
+
         window.speechSynthesis.speak(msg);
+      } else if (!('speechSynthesis' in window)) {
+        alert("Text-to-speech is not supported on this browser.");
       }
     }
 
