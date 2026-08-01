@@ -29,7 +29,7 @@
 </head>
 <body>
 
-  <div class="card" onclick="unlockAudio()">
+  <div class="card">
     <h1>🐝 NNDYM Spelling Bee</h1>
     
     <!-- Mode Switcher -->
@@ -72,7 +72,6 @@
   </div>
 
   <script>
-    // Your Published Google Sheet CSV Link:
     const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSRZ0oi5EBhQluPga2K658LaYw5ifDb8Qdnmkjz9I_2LqnUx-wF6rtWE2rrORblpi6tMlSNWEXT1QSR/pub?output=csv";
 
     let allWords = [];
@@ -80,14 +79,6 @@
     let currentIndex = 0;
     let currentMode = 'study';
     let wordVisible = true;
-    let audioUnlocked = false;
-
-    // Load voices early for Chrome / Safari
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.onvoiceschanged = () => {
-        window.speechSynthesis.getVoices();
-      };
-    }
 
     fetch(SHEET_CSV_URL)
       .then(res => res.text())
@@ -200,33 +191,15 @@
       }
     }
 
-    function unlockAudio() {
-      if (!audioUnlocked && 'speechSynthesis' in window) {
-        const empty = new SpeechSynthesisUtterance('');
-        window.speechSynthesis.speak(empty);
-        audioUnlocked = true;
-      }
-    }
-
+    // Direct Google Audio Engine Stream
     function speakWord() {
-      unlockAudio();
-      if (currentPool.length > 0 && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        
-        const wordToSpeak = currentPool[currentIndex].word;
-        const msg = new SpeechSynthesisUtterance(wordToSpeak);
-        
-        msg.lang = 'en-US';
-        msg.rate = 0.8;
-        msg.pitch = 1.0;
-
-        const voices = window.speechSynthesis.getVoices();
-        const englishVoice = voices.find(v => v.lang.startsWith('en'));
-        if (englishVoice) msg.voice = englishVoice;
-
-        window.speechSynthesis.speak(msg);
-      } else if (!('speechSynthesis' in window)) {
-        alert("Text-to-speech is not supported on this browser.");
+      if (currentPool.length > 0) {
+        const wordToSpeak = encodeURIComponent(currentPool[currentIndex].word);
+        const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${wordToSpeak}&tl=en&client=tw-ob`;
+        const audio = new Audio(audioUrl);
+        audio.play().catch(e => {
+          console.log("Audio playback error:", e);
+        });
       }
     }
 
