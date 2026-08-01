@@ -80,6 +80,14 @@
     let currentMode = 'study';
     let wordVisible = true;
 
+    // Utility function to strip hidden spaces, zero-width characters, and non-alphanumeric noise
+    function cleanWord(str) {
+      if (!str) return '';
+      return str.replace(/[\u200B-\u200D\uFEFF]/g, '') // Remove zero-width spaces
+                .trim()
+                .toLowerCase();
+    }
+
     fetch(SHEET_CSV_URL)
       .then(res => res.text())
       .then(csvText => {
@@ -88,7 +96,7 @@
           if (rows[i].length >= 2 && rows[i][1]) {
             allWords.push({
               week: rows[i][0].trim(),
-              word: rows[i][1].trim().toUpperCase(),
+              word: rows[i][1].trim(),
               pos: rows[i][2] ? rows[i][2].trim() : '',
               hint: rows[i][3] ? rows[i][3].trim() : ''
             });
@@ -191,24 +199,51 @@
       }
     }
 
-    // Direct Google Audio Engine Stream
     function speakWord() {
-      if (currentPool.length > 0) {
-        const wordToSpeak = encodeURIComponent(currentPool[currentIndex].word);
-        const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${wordToSpeak}&tl=en&client=tw-ob`;
-        const audio = new Audio(audioUrl);
-        audio.play().catch(e => {
-          console.log("Audio playback error:", e);
-        });
+      if (currentPool.length === 0) return;
+      const targetWord = currentPool[currentIndex].word;
+
+      // First Try: Web Speech API
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const msg = new SpeechSynthesisUtterance(targetWord);
+        msg.lang = 'en-US';
+        msg.rate = 0.8;
+        
+        let spoken = false;
+        msg.onend = () => { spoken = true; };
+        
+        window.speechSynthesis.speak(msg);
+
+        // Fallback check after short delay if browser speech failed
+        setTimeout(() => {
+          if (!window.speechSynthesis.speaking && !spoken) {
+            playAudioFallback(targetWord);
+          }
+        }, 300);
+      } else {
+        playAudioFallback(targetWord);
       }
     }
 
+    function playAudioFallback(text) {
+      const audioUrl = 'https://dict.youdao.com/dictvoice?type=0&audio=' + encodeURIComponent(text);
+      const audio = new Audio(audioUrl);
+      audio.play().catch(e => {
+        console.log("Audio play error:", e);
+      });
+    }
+
     function checkSpelling() {
-      const userAns = document.getElementById('userInput').value.trim().toUpperCase();
-      const target = currentPool[currentIndex].word;
+      const userRaw = document.getElementById('userInput').value;
+      const targetRaw = currentPool[currentIndex].word;
+
+      const userClean = cleanWord(userRaw);
+      const targetClean = cleanWord(targetRaw);
+
       const feedback = document.getElementById('feedback');
 
-      if (userAns === target) {
+      if (userClean === targetClean && userClean.length > 0) {
         feedback.innerText = "🎉 Correct! Great job!";
         feedback.className = "feedback correct";
         setTimeout(() => {
