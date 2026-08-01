@@ -79,13 +79,18 @@
     let currentIndex = 0;
     let currentMode = 'study';
     let wordVisible = true;
+    let synth = window.speechSynthesis;
 
-    // Utility function to strip hidden spaces, zero-width characters, and non-alphanumeric noise
-    function cleanWord(str) {
+    // Aggressive cleaning function: removes all non-alphabetical characters for comparison
+    function sanitizeForMatch(str) {
       if (!str) return '';
-      return str.replace(/[\u200B-\u200D\uFEFF]/g, '') // Remove zero-width spaces
-                .trim()
-                .toLowerCase();
+      return str.toLowerCase().replace(/[^a-z0-9]/gi, '');
+    }
+
+    // Clean display version (removes quotes/newlines, keeps readable text)
+    function sanitizeForDisplay(str) {
+      if (!str) return '';
+      return str.replace(/[\r\n\t]/g, '').replace(/^"|"$/g, '').trim();
     }
 
     fetch(SHEET_CSV_URL)
@@ -94,12 +99,15 @@
         const rows = parseCSV(csvText);
         for (let i = 1; i < rows.length; i++) {
           if (rows[i].length >= 2 && rows[i][1]) {
-            allWords.push({
-              week: rows[i][0].trim(),
-              word: rows[i][1].trim(),
-              pos: rows[i][2] ? rows[i][2].trim() : '',
-              hint: rows[i][3] ? rows[i][3].trim() : ''
-            });
+            const cleanW = sanitizeForDisplay(rows[i][1]);
+            if (cleanW) {
+              allWords.push({
+                week: sanitizeForDisplay(rows[i][0]),
+                word: cleanW,
+                pos: rows[i][2] ? sanitizeForDisplay(rows[i][2]) : '',
+                hint: rows[i][3] ? sanitizeForDisplay(rows[i][3]) : ''
+              });
+            }
           }
         }
         populateWeeks();
@@ -109,7 +117,7 @@
       });
 
     function parseCSV(text) {
-      let lines = text.split('\n');
+      let lines = text.split(/\r?\n/);
       return lines.map(line => {
         let regex = /(?:\"([^\"]*)\"|([^,]+))/g;
         let row = [];
@@ -199,47 +207,37 @@
       }
     }
 
+    // Direct Speech Synthesis Fix for Chrome & Mobile
     function speakWord() {
       if (currentPool.length === 0) return;
-      const targetWord = currentPool[currentIndex].word;
+      const wordToSpeak = currentPool[currentIndex].word;
 
-      // First Try: Web Speech API
       if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        const msg = new SpeechSynthesisUtterance(targetWord);
-        msg.lang = 'en-US';
-        msg.rate = 0.8;
-        
-        let spoken = false;
-        msg.onend = () => { spoken = true; };
-        
-        window.speechSynthesis.speak(msg);
+        synth.cancel(); // Reset audio queue
 
-        // Fallback check after short delay if browser speech failed
-        setTimeout(() => {
-          if (!window.speechSynthesis.speaking && !spoken) {
-            playAudioFallback(targetWord);
-          }
-        }, 300);
+        const utterance = new SpeechSynthesisUtterance(wordToSpeak);
+        utterance.rate = 0.8;
+        utterance.lang = 'en-US';
+
+        // Select an English voice explicitly if available
+        const voices = synth.getVoices();
+        const preferredVoice = voices.find(v => v.lang.includes('en') || v.lang.includes('EN'));
+        if (preferredVoice) {
+          utterance.voice = preferredVoice;
+        }
+
+        synth.speak(utterance);
       } else {
-        playAudioFallback(targetWord);
+        alert("Audio speech is not supported on this device/browser.");
       }
-    }
-
-    function playAudioFallback(text) {
-      const audioUrl = 'https://dict.youdao.com/dictvoice?type=0&audio=' + encodeURIComponent(text);
-      const audio = new Audio(audioUrl);
-      audio.play().catch(e => {
-        console.log("Audio play error:", e);
-      });
     }
 
     function checkSpelling() {
       const userRaw = document.getElementById('userInput').value;
       const targetRaw = currentPool[currentIndex].word;
 
-      const userClean = cleanWord(userRaw);
-      const targetClean = cleanWord(targetRaw);
+      const userClean = sanitizeForMatch(userRaw);
+      const targetClean = sanitizeForMatch(targetRaw);
 
       const feedback = document.getElementById('feedback');
 
@@ -259,6 +257,13 @@
       if (e.key === 'Enter') {
         checkSpelling();
       }
+    }
+
+    // Warm up speech synthesis on initial load
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+      };
     }
   </script>
 </body>
