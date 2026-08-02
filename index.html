@@ -86,19 +86,16 @@
     let wordVisible = true;
     let synth = window.speechSynthesis;
 
-    // Aggressive cleaning function: removes all non-alphabetical characters for comparison
     function sanitizeForMatch(str) {
       if (!str) return '';
       return str.toLowerCase().replace(/[^a-z0-9]/gi, '');
     }
 
-    // Clean display version (removes quotes/newlines, keeps readable text)
     function sanitizeForDisplay(str) {
       if (!str) return '';
       return str.replace(/[\r\n\t]/g, '').replace(/^"|"$/g, '').trim();
     }
 
-    // Fisher-Yates Shuffle algorithm to randomize array elements
     function shuffleArray(array) {
       for (let i = array.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -160,10 +157,7 @@
       } else {
         currentPool = allWords.filter(w => w.week === selected);
       }
-      
-      // Shuffle the selected pool whenever week/filter changes
       shuffleArray(currentPool);
-
       currentIndex = 0;
       loadWord();
     }
@@ -225,14 +219,12 @@
       }
     }
 
-    // Skip current word: moves it to the end of the pool to practice later
     function skipWord() {
-      if (currentPool.length <= 1) return; // No point skipping if 1 or 0 words
+      if (currentPool.length <= 1) return;
 
       const skippedItem = currentPool.splice(currentIndex, 1)[0];
-      currentPool.push(skippedItem); // Add skipped word to the end of array
+      currentPool.push(skippedItem);
       
-      // Keep index in valid bounds if we were on the last item
       if (currentIndex >= currentPool.length) {
         currentIndex = 0;
       }
@@ -247,22 +239,37 @@
       }, 1500);
     }
 
-    // Direct Speech Synthesis Fix for Chrome & Mobile
+    // Enhanced Speech Engine with Indian-English Accent Prioritization
     function speakWord() {
       if (currentPool.length === 0) return;
       const wordToSpeak = currentPool[currentIndex].word;
 
       if ('speechSynthesis' in window) {
-        synth.cancel(); // Reset audio queue
+        synth.cancel();
 
         const utterance = new SpeechSynthesisUtterance(wordToSpeak);
         utterance.rate = 0.8;
-        utterance.lang = 'en-US';
 
         const voices = synth.getVoices();
-        const preferredVoice = voices.find(v => v.lang.includes('en') || v.lang.includes('EN'));
-        if (preferredVoice) {
-          utterance.voice = preferredVoice;
+
+        // Search specifically for Indian English (en-IN) or Hindi (hi-IN) voice
+        const indianVoice = voices.find(v => 
+          v.lang === 'en-IN' || 
+          v.lang === 'en_IN' || 
+          v.lang.includes('en-IN') || 
+          v.lang.includes('hi-IN') ||
+          v.name.toLowerCase().includes('india')
+        );
+
+        // Fallback to standard English voice if Indian voice isn't present
+        const englishVoice = voices.find(v => v.lang.startsWith('en'));
+
+        if (indianVoice) {
+          utterance.voice = indianVoice;
+          utterance.lang = 'en-IN';
+        } else if (englishVoice) {
+          utterance.voice = englishVoice;
+          utterance.lang = 'en-US';
         }
 
         synth.speak(utterance);
@@ -298,7 +305,6 @@
       }
     }
 
-    // Warm up speech synthesis on initial load
     if ('speechSynthesis' in window) {
       window.speechSynthesis.onvoiceschanged = () => {
         window.speechSynthesis.getVoices();
