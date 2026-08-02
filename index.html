@@ -239,20 +239,41 @@
       }, 1500);
     }
 
-    // Enhanced Speech Engine with Indian-English Accent Prioritization
-    function speakWord() {
+    // Free Dictionary API audio with Indian English Speech Synthesis Fallback
+    async function speakWord() {
       if (currentPool.length === 0) return;
-      const wordToSpeak = currentPool[currentIndex].word;
+      const wordToSpeak = currentPool[currentIndex].word.trim().toLowerCase();
 
+      try {
+        const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${wordToSpeak}`);
+        const data = await res.json();
+
+        let audioSrc = "";
+        if (Array.isArray(data) && data[0].phonetics) {
+          const found = data[0].phonetics.find(p => p.audio && p.audio.length > 0);
+          if (found) audioSrc = found.audio;
+        }
+
+        if (audioSrc) {
+          const audio = new Audio(audioSrc);
+          audio.play().catch(() => {
+            speakNative(currentPool[currentIndex].word);
+          });
+        } else {
+          speakNative(currentPool[currentIndex].word);
+        }
+      } catch (err) {
+        speakNative(currentPool[currentIndex].word);
+      }
+    }
+
+    function speakNative(text) {
       if ('speechSynthesis' in window) {
         synth.cancel();
-
-        const utterance = new SpeechSynthesisUtterance(wordToSpeak);
+        const utterance = new SpeechSynthesisUtterance(text);
         utterance.rate = 0.8;
 
         const voices = synth.getVoices();
-
-        // Search specifically for Indian English (en-IN) or Hindi (hi-IN) voice
         const indianVoice = voices.find(v => 
           v.lang === 'en-IN' || 
           v.lang === 'en_IN' || 
@@ -261,20 +282,17 @@
           v.name.toLowerCase().includes('india')
         );
 
-        // Fallback to standard English voice if Indian voice isn't present
-        const englishVoice = voices.find(v => v.lang.startsWith('en'));
+        const defaultVoice = voices.find(v => v.lang.startsWith('en'));
 
         if (indianVoice) {
           utterance.voice = indianVoice;
           utterance.lang = 'en-IN';
-        } else if (englishVoice) {
-          utterance.voice = englishVoice;
+        } else if (defaultVoice) {
+          utterance.voice = defaultVoice;
           utterance.lang = 'en-US';
         }
 
         synth.speak(utterance);
-      } else {
-        alert("Audio speech is not supported on this device/browser.");
       }
     }
 
