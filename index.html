@@ -15,7 +15,8 @@
     button { font-size: 18px; padding: 12px 24px; margin: 10px 5px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; }
     .btn-audio { background-color: #3498db; color: white; }
     .btn-audio:hover { background-color: #2980b9; }
-    .btn-submit { background-color: #2ecc71; color: white; width: 80%; }
+    .btn-submit { background-color: #2ecc71; color: white; width: 55%; }
+    .btn-skip { background-color: #e67e22; color: white; width: 30%; }
     .btn-nav { background-color: #4a5568; color: white; }
     .word-display { font-size: 32px; font-weight: bold; color: #2b6cb0; margin: 15px 0; min-height: 45px; letter-spacing: 2px; }
     .pos { color: #8e44ad; font-weight: bold; font-size: 16px; text-transform: uppercase; margin-top: 10px; }
@@ -25,6 +26,7 @@
     .wrong { color: #c0392b; }
     .counter { color: #7f8c8d; font-size: 14px; margin-top: 15px; }
     .hidden { display: none; }
+    .action-group { display: flex; justify-content: center; gap: 8px; width: 85%; margin: 0 auto; }
   </style>
 </head>
 <body>
@@ -58,7 +60,10 @@
     <div id="quizBox" class="hidden">
       <input type="text" id="userInput" placeholder="Type word here..." autocomplete="off" onkeypress="handleKeyPress(event)">
       <br>
-      <button class="btn-submit" onclick="checkSpelling()">Submit Answer</button>
+      <div class="action-group">
+        <button class="btn-submit" onclick="checkSpelling()">Submit</button>
+        <button class="btn-skip" onclick="skipWord()">Skip ➡️</button>
+      </div>
       <div class="feedback" id="feedback"></div>
     </div>
 
@@ -91,6 +96,15 @@
     function sanitizeForDisplay(str) {
       if (!str) return '';
       return str.replace(/[\r\n\t]/g, '').replace(/^"|"$/g, '').trim();
+    }
+
+    // Fisher-Yates Shuffle algorithm to randomize array elements
+    function shuffleArray(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
     }
 
     fetch(SHEET_CSV_URL)
@@ -146,6 +160,10 @@
       } else {
         currentPool = allWords.filter(w => w.week === selected);
       }
+      
+      // Shuffle the selected pool whenever week/filter changes
+      shuffleArray(currentPool);
+
       currentIndex = 0;
       loadWord();
     }
@@ -207,6 +225,28 @@
       }
     }
 
+    // Skip current word: moves it to the end of the pool to practice later
+    function skipWord() {
+      if (currentPool.length <= 1) return; // No point skipping if 1 or 0 words
+
+      const skippedItem = currentPool.splice(currentIndex, 1)[0];
+      currentPool.push(skippedItem); // Add skipped word to the end of array
+      
+      // Keep index in valid bounds if we were on the last item
+      if (currentIndex >= currentPool.length) {
+        currentIndex = 0;
+      }
+
+      loadWord();
+      
+      const feedback = document.getElementById('feedback');
+      feedback.innerText = "↪️ Skipped! Moved to end of practice deck.";
+      feedback.className = "feedback wrong";
+      setTimeout(() => {
+        feedback.innerText = "";
+      }, 1500);
+    }
+
     // Direct Speech Synthesis Fix for Chrome & Mobile
     function speakWord() {
       if (currentPool.length === 0) return;
@@ -219,7 +259,6 @@
         utterance.rate = 0.8;
         utterance.lang = 'en-US';
 
-        // Select an English voice explicitly if available
         const voices = synth.getVoices();
         const preferredVoice = voices.find(v => v.lang.includes('en') || v.lang.includes('EN'));
         if (preferredVoice) {
